@@ -1,0 +1,2 @@
+all:
+	g++ -std=c++17 -Iinclude -Iinclude/SDL2 -Llib -o Chip8 src/*.cpp -lmingw32 -lSDL2main -lSDL2
