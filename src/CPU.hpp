@@ -74,6 +74,7 @@ class CPU
 
         // Interrupt flag
         bool IMEflag;
+        bool prepareIME;
     private:
 
         // Opcode Decoding (In Octal)
@@ -193,11 +194,11 @@ class CPU
                 // YYY = 0-3
                 void opRETcc();
                 // YYY = 4
-                void opLDoffnA();
+                void opLDHnA();
                 // YYY = 5
                 void opADDSPd();
                 // YYY = 6
-                void opLDAoffn();
+                void opLDHAn();
                 // YYY = 7
                 void opLDHLSPId();
             // ZZZ = 1
@@ -216,11 +217,11 @@ class CPU
                 // YYY = 0-3
                 void opJPccnn();
                 // YYY = 4
-                void opLDoffCA();
+                void opLDHCA();
                 // YYY = 5
                 void opLDnnA();
                 // YYY = 6
-                void opLDAoffC();
+                void opLDHAC();
                 // YYY = 7
                 void opLDAnn();
             // ZZZ = 3
@@ -247,13 +248,47 @@ class CPU
                     void opCALLnn();
                     // P = 1-3 (NONE)
             // ZZZ = 6
-                void opALUn(); // ALU using immediate
+                // YYY = 0-1
+                void opADDAn();
+                // YYY = 2-3
+                void opSUBAn();
+                // YYY = 4
+                void opANDAn();
+                // YYY = 5
+                void opXORAn();
+                // YYY = 6
+                void opORAn();
+                // YYY = 7
+                void opCPAn();
             // ZZZ = 7
                 void opRST();
         
         // CB Prefix Opcodes
             // XX = 0 (00)
-            void opROT();
+            void opROT(); // master function for rotational CB opcodes
+                /// YYY = 0
+                uint8_t opRLCr(uint8_t data);
+
+                /// YYY = 1
+                uint8_t opRRCr(uint8_t data);
+
+                /// YYY = 2
+                uint8_t opRLr(uint8_t data);
+
+                /// YYY = 3
+                uint8_t opRRr(uint8_t data);
+
+                /// YYY = 4
+                uint8_t opSLAr(uint8_t data);
+
+                /// YYY = 5
+                uint8_t opSRAr(uint8_t data);
+
+                /// YYY = 6
+                uint8_t opSWAPr(uint8_t data);
+
+                /// YYY = 7
+                uint8_t opSRLr(uint8_t data);
             
             // XX = 1 (01)
             void opBIT();
