@@ -1,5 +1,6 @@
 #include "CPU.hpp"
 
+
 CPU::CPU()
 {
     // Register resetting
@@ -11,7 +12,12 @@ CPU::CPU()
     // Initialize memory map
     memMap = std::vector<uint8_t>(MEM_MAP_SIZE, 0); 
 
-    // resetting opcode decode variables
+    // Reset cycle count
+    cycleCount = 0;
+
+    
+
+    // Resetting opcode decode variables
     XX = 0;
     YYY = 0;
     ZZZ = 0;
@@ -19,3 +25,17 @@ CPU::CPU()
     P = 0;
     Q = 0;
 }
+
+uint8_t CPU::readMemory(uint16_t addr)
+{
+    uint8_t returnVal{memMap[addr]};
+    pc++;
+
+    return returnVal;
+}
+
+void CPU::writeMemory(uint16_t addr, uint8_t data)
+{
+    memMap[addr] = data;
+}
+
