@@ -18,7 +18,9 @@ constexpr uint8_t DISPLAY_WIDTH = 144;
 constexpr uint8_t DISPLAY_HEIGHT = 160;
 
 /* CONFIGURABLE SPECS */
-constexpr uint32_t CLOCK_SPEED = 0;
+constexpr uint32_t CGB_HZ = 8388608; // 8.388608 MHz
+constexpr uint32_t DMG_HZ = 4194304; // 4.194304 MHz
+constexpr uint32_t DIV_HZ = 16384;
 
 /* FLAG REGISTER */
 constexpr uint8_t F_Z = 7;
@@ -56,18 +58,23 @@ constexpr uint16_t ECHO_RAM = 0xE000;
 constexpr uint16_t SPRITE_TABLE = 0xFE00;
 constexpr uint16_t HRAM = 0xFF80;
 
+/* CARTRIDGE HEADER */
+constexpr uint16_t CART_TYPE = 0x147;
+constexpr uint16_t ROM_HEADER = 0x148;
+constexpr uint16_t RAM_HEADER = 0x149;
+
+/* MBC CLASSIFICATIONS */
+constexpr uint8_t NO_MBC = 0;
+constexpr uint8_t MBC1 = 1;
+constexpr uint8_t MBC2 = 2;
+constexpr uint8_t MBC3 = 3;
+constexpr uint8_t MBC5 = 5;
+
 class CPU
 {
 
     /* VARIABLES */
     public:
-        // All CPU registers
-        uint8_t registers[8];
-        uint16_t sp;
-        uint16_t pc;
-
-        // Memory Map
-        std::vector<uint8_t> memMap;
 
         // CPU cycle tracker (m-cycles)
         uint8_t cycleCount;
@@ -76,6 +83,23 @@ class CPU
         bool IMEflag;
         bool prepareIME;
     private:
+        // All CPU registers
+        uint8_t registers[8];
+        uint16_t sp;
+        uint16_t pc;
+
+        // Memory Map
+        std::vector<uint8_t> memMap;
+
+        // ROM and RAM Banks
+        std::vector<uint8_t> ROMBanks;
+        std::vector<uint8_t> RAMBanks;
+        uint8_t curROMBank;
+        uint8_t curRAMBank;
+
+        uint8_t mbcType;
+        uint16_t maxROMBanks;
+        uint8_t maxRAMBanks;
 
         // Opcode Decoding (In Octal)
         uint8_t opcode;
@@ -87,19 +111,49 @@ class CPU
         uint8_t P;      // bits 5-4
         uint8_t Q;      // bit 3
 
+
     /* FUNCTIONS */
     public:
         // Constructor
         CPU();
 
+        // ROM loader
+        void loadROM(const std::string fileName);
+
+
+    private:
+        // main execution loop
+        void runCPU();
+
+        // Timer operations, we want these to bypass our R/W functions
+        void incDIV();
+        void resetDIV();
+        void incTIMA();
+        void resetTIMA();
+        uint8_t readTAC(bool clockSelect);
+
         // CPU Read and Write
         uint8_t readMemory(uint16_t addr);
         void writeMemory(uint16_t addr, uint8_t data);
+        
+        // Banking functions
+        void getBankMode();
+        void getROMSize();
+        void getRAMSize();
+        void generateBanks();
 
         /* BEGIN: Definitions in Opcode.cpp */
         // Opcode Decode and Execution
         void decode();
         void executeOp();
+
+        // Sub functions to decode opcodes that have many cases
+        void x0z0Decode();
+        void x0z2Decode();
+        void x0z7Decode();
+        void x3z0Decode();
+        void x3z1Decode();
+        void x3z2Decode();
 
         /* OPCODES (format opXXYYYZZZ) */
         // Opcode helpers

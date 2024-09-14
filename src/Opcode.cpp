@@ -575,9 +575,64 @@ void CPU::opRRA()
     cycleCount += 1;
 }
 
+/* Convert accumulator to BCD equivalent */
 void CPU::opDAA()
 {
+    // was last op subtraction?
+    bool lastIsSub{Helper::getBit(registers[R_F], F_N)};
+    bool setCarry{false};
+    // max value of BCD is 1001 1001 (99)
+    // we use an "error" offset to account for how 1001 is the max (as opposed to 1111)
 
+    // last op was adding
+    if(!lastIsSub)
+    {
+        // out of bounds set c flag and adjust to emulate BCD overflow
+        if(registers[R_A] > 0x99 || Helper::getBit(registers[R_F], F_C))
+        {
+            registers[R_A] += 0x60;
+            setCarry = true;
+        }
+        
+        // check if lower nibble overflowed and adjust accordingly
+        if((registers[R_A] & 0x0F) > 0x09 || Helper::getBit(registers[R_F], F_H))
+        {
+            registers[R_A] += 0x06;
+        }
+    }
+    else
+    {
+        // BCD arithmetic underflow doesn't exist so we don't need to worry about it, only whether flags were set
+        if(Helper::getBit(registers[R_F], F_C))
+        {
+            registers[R_A] -= 0x60;
+        }
+        
+        if(Helper::getBit(registers[R_F], F_H))
+        {
+            registers[R_A] += 0x06;
+        }
+    }
+    
+    if(registers[R_A] == 0)
+    {
+        Helper::setBit(registers[R_F], F_Z);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_Z);
+    }
+    if(setCarry)
+    {
+        Helper::setBit(registers[R_F], F_C);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_C);
+    }
+    Helper::resetBit(registers[R_F], F_H);
+    
+    cycleCount += 1;
 }
 
 /* Complements the accumulator */
@@ -842,7 +897,7 @@ void CPU::opRETcc()
 
 void CPU::opLDHnA()
 {
-    uint16_t addr{Helper::concatChar(0xFF00, readMemory(pc))};
+    uint16_t addr{Helper::concatChar(0xFF, readMemory(pc))};
 
     writeMemory(addr, registers[R_A]);
     cycleCount += 3;
