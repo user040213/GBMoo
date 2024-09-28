@@ -3,7 +3,7 @@
 uint16_t Helper::concatChar(uint8_t MSB, uint8_t LSB)
 {
     uint16_t returnVal{MSB};
-    returnVal = (returnVal << 8) | LSB;
+    returnVal = (returnVal << 8) | (LSB & 0xFF);
     return returnVal;
 }
 

@@ -1,9 +1,15 @@
 #include "CPU.hpp"
-#include "Emulator.hpp"
+#include "FrontendSystem.hpp"
+
 
 int main(int argc, char* argv[])
 {
-    Emulator* emuObj = new Emulator("GBMoo", DISPLAY_WIDTH, DISPLAY_HEIGHT);
 
+    FrontendSystem frontEnd = FrontendSystem("GBMoo", 600, 600);
+    std::string fileAppend = ".gb";
+    frontEnd.loadCPURom(argv[1] + fileAppend);
+    frontEnd.run();
+   
     return 0;
+    
 }

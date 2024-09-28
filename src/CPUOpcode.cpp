@@ -1,4 +1,6 @@
 #include "CPU.hpp"
+#include "CPUDAATable.cpp"
+
 /* OPCODE DEFINITIONS */
 /* All opcode cycles use m-cycles */
 
@@ -21,7 +23,7 @@ bool CPU::passedCondition(uint8_t condition)
     bool passed{false};
     
     uint8_t zBit{Helper::getBit(registers[R_F], F_Z)};
-    uint8_t cBit{Helper::getBit(registers[F_Z], F_C)};
+    uint8_t cBit{Helper::getBit(registers[R_F], F_C)};
     
     switch(condition)
     {
@@ -43,139 +45,6 @@ bool CPU::passedCondition(uint8_t condition)
     return passed;
 }
 
-void CPU::add16Bit(uint16_t operand1, uint16_t operand2)
-{
-    Helper::resetBit(registers[R_F], F_N);
-
-    // Probably the hardest flag and this might be wrong too
-    /* Algorithm: Sum everything up to and including 11th bit 
-                  If the 12th bit ticks up to 1 set half carry flag */
-    uint16_t halfSum{(operand1 & 0xFFF) + (operand2 & 0xFFF)};
-    if(Helper::getBit(halfSum, 12))
-    {
-        Helper::setBit(registers[R_F], F_H);
-    }
-    else
-    {
-        Helper::resetBit(registers[R_F], F_H);
-    }
-
-    if(operand1 > (0xFFFF - operand2))
-    {
-        Helper::setBit(registers[R_F], F_C);
-    }
-    else
-    {
-        Helper::resetBit(registers[R_F], F_C);
-    }
-
-
-}
-
-/* Just calculates flags set for an 8 bit add */
-void CPU::add8Bit(uint8_t operand1, uint8_t operand2)
-{
-    Helper::resetBit(registers[R_F], F_N);
-
-    uint8_t halfSum{(operand1 & 0xF) + (operand2 & 0xF)};
-
-    if(Helper::getBit(halfSum, 4))
-    {
-        Helper::setBit(registers[R_F], F_H);
-    }
-    else
-    {
-        Helper::resetBit(registers[R_F], F_H);
-    }
-
-    if(operand1 > (0xFF - operand2))
-    {
-        Helper::setBit(registers[R_F], F_C);
-    }
-    else
-    {
-        Helper::resetBit(registers[R_F], F_C);
-    }
-
-    if((operand1 + operand2) == 0)
-    {
-        Helper::setBit(registers[R_F], F_Z);
-    }
-    else
-    {
-        Helper::resetBit(registers[R_F], F_Z);
-
-    }
-
-}
-
-/* Sets all flags needed for subtraction on 8 bits */
-void CPU::sub8Bit(uint8_t minuend, uint8_t subtrahend)
-{
-    if ((minuend - subtrahend) == 0)
-    {
-        Helper::setBit(registers[R_F], F_Z);
-    }
-    else
-    {
-        Helper::resetBit(registers[R_F], F_Z);
-    }
-
-    Helper::setBit(registers[R_F], F_N);
-
-    uint8_t minuNib{(minuend & 0b1111)};
-    uint8_t subtraNib{(subtrahend & 0b1111)};
-
-    if(subtraNib > minuNib)
-    {
-        Helper::setBit(registers[R_F], F_H);
-    }
-    else
-    {
-        Helper::resetBit(registers[R_F], F_H);
-    }
-
-    if(subtrahend > minuend)
-    {
-        Helper::setBit(registers[R_F], F_C);
-    }
-    else
-    {
-        Helper::resetBit(registers[R_F], F_C);
-    }
-}
-
-void CPU::inc8Bit(uint8_t data)
-{
-    uint8_t carry{Helper::getBit(registers[R_F], F_C)};
-
-    add8Bit(data, 1);
-
-    if(carry)
-    {
-        Helper::setBit(registers[R_F], F_C);
-    }
-    else
-    {
-        Helper::resetBit(registers[R_F], F_C);
-    }
-}
-void CPU::dec8Bit(uint8_t data)
-{
-    uint8_t carry{Helper::getBit(registers[R_F], F_C)};
-
-    sub8Bit(data, 1);
-
-    if(carry)
-    {
-        Helper::setBit(registers[R_F], F_C);
-    }
-    else
-    {
-        Helper::resetBit(registers[R_F], F_C);
-    }
-}
-
 /* OPCODES BEGIN */
 /* Does nothing */
 void CPU::opNOP()
@@ -190,7 +59,9 @@ void CPU::opLDnnSP()
     uint8_t upperBits{(sp & 0xFF00) >> 8};
     uint8_t lowerBits{sp & 0xFF};
     uint8_t addressLSB{readMemory(pc)};
+    pc++;
     uint8_t addressMSB{readMemory(pc)};
+    pc++;
     uint16_t fullAddress{Helper::concatChar(addressMSB, addressLSB)};
 
     writeMemory(fullAddress, lowerBits);
@@ -200,18 +71,19 @@ void CPU::opLDnnSP()
     cycleCount += 5;
 }
 
-/* Enter low power mode, doesn't take any cycles 
+/* Enter low power mode, I found conflicting docs on whether this takes 1 or 0 m cycles
    Also double speed switch in GBC*/
 void CPU::opSTOP()
 {
     // UNIMPLEMENTED
-    return;
+    opHALT();
 }
 
 /* Relative jump to 16 bit address, using signed 8 bit immediate */
 void CPU::opJRd()
 {
     int8_t offset{readMemory(pc)};
+    pc++;
 
     pc = pc + offset;
 
@@ -227,6 +99,7 @@ void CPU::opJRccd()
     }
     else
     {
+        pc++;
         cycleCount += 2;
     }
 }
@@ -235,7 +108,9 @@ void CPU::opJRccd()
 void CPU::opLDrpnn()
 {
     uint8_t immLSB{readMemory(pc)};
+    pc++;
     uint8_t immMSB{readMemory(pc)};
+    pc++;
 
     switch(P)
     {
@@ -284,7 +159,28 @@ void CPU::opADDHLrp()
     registers[R_H] = Helper::hiBits(sum);
     registers[R_L] = Helper::loBits(sum);
 
-    add16Bit(originalHL, fullShort);
+    Helper::resetBit(registers[R_F], F_N);
+
+    /* Algorithm: Sum everything up to and including 11th bit 
+                  If the 12th bit ticks up to 1 set half carry flag */
+    uint16_t halfSum{(originalHL & 0xFFF) + (fullShort & 0xFFF)};
+    if(Helper::getBit(halfSum, 12))
+    {
+        Helper::setBit(registers[R_F], F_H);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_H);
+    }
+
+    if(originalHL > (0xFFFF - fullShort))
+    {
+        Helper::setBit(registers[R_F], F_C);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_C);
+    }
 
     cycleCount += 2;
 }
@@ -353,7 +249,6 @@ void CPU::opLDArr()
     uint16_t addr{Helper::concatChar(MSB, LSB)};
 
     registers[R_A] = readMemory(addr);
-    pc--;
     cycleCount += 2;
 }
 
@@ -361,9 +256,7 @@ void CPU::opLDArr()
 void CPU::opLDAHLID()
 {
     uint16_t combinedHL{Helper::concatChar(registers[R_H], registers[R_L])}; 
-
     registers[R_A] = readMemory(combinedHL);
-    pc--;
 
     switch(P)
     {
@@ -436,27 +329,77 @@ void CPU::opINCDECrp()
 void CPU::opINCDECr()
 {
     int8_t operand{0};
+    uint8_t newVal{0};
 
-    switch(Q)
+    switch(ZZZ)
     {
-        case 0:
+        case 4:
             operand = 1;
             break;
-        case 1:
+        case 5:
             operand = -1;
             break;
     }
-
-    uint8_t originalVal = registers[YYY];
-    registers[YYY] += operand;
-
-    if(operand > 0)
+    uint8_t originalVal{0};
+    if(YYY == R_HL)
     {
-        inc8Bit(originalVal);
+        cycleCount += 2;
+        uint16_t addr{Helper::concatChar(registers[R_H], registers[R_L])};
+        originalVal = readMemory(addr);
+        newVal = originalVal + operand;
+        writeMemory(addr, newVal);
     }
     else
     {
-        dec8Bit(originalVal);
+        originalVal = registers[YYY];
+        registers[YYY] += operand;
+        newVal = registers[YYY];
+    }
+    
+
+    if(operand > 0)
+    {
+        if(newVal == 0)
+        {
+            Helper::setBit(registers[R_F], F_Z);
+        }
+        else
+        {
+            Helper::resetBit(registers[R_F], F_Z);
+        }
+
+	    Helper::resetBit(registers[R_F], F_N);
+
+        if((originalVal & 0xF) == 0xF)
+        {
+            Helper::setBit(registers[R_F], F_H);
+        }
+        else
+        {
+            Helper::resetBit(registers[R_F], F_H);
+        }
+    }
+    else
+    {      
+        if(newVal == 0)
+        {
+            Helper::setBit(registers[R_F], F_Z);
+        }
+        else
+        {
+            Helper::resetBit(registers[R_F], F_Z);
+        }
+
+	    Helper::setBit(registers[R_F], F_N);
+
+        if((originalVal & 0xF) == 0x0)
+        {
+            Helper::setBit(registers[R_F], F_H);
+        }
+        else
+        {
+            Helper::resetBit(registers[R_F], F_H);
+        }
     }
 
     cycleCount += 1;
@@ -466,7 +409,18 @@ void CPU::opINCDECr()
 void CPU::opLDrn()
 {
     uint8_t regIndex{YYY};
-    registers[regIndex] = readMemory(pc);
+    if(YYY == R_HL)
+    {
+        cycleCount += 1;
+        uint16_t addr{Helper::concatChar(registers[R_H], registers[R_L])};
+        uint8_t newVal = readMemory(pc);
+        writeMemory(addr, newVal);
+    }
+    else
+    {
+        registers[regIndex] = readMemory(pc);
+    }
+    pc++;
 
     cycleCount += 2;
 }
@@ -479,11 +433,11 @@ void CPU::opRLCA()
     if(MSB == 1)
     {
         registers[R_A] |= 0b1;
-        Helper::setBit(registers[R_F], R_C);
+        Helper::setBit(registers[R_F], F_C);
     }
     else
     {
-        Helper::resetBit(registers[R_F], R_C);
+        Helper::resetBit(registers[R_F], F_C);
     }
 
     Helper::resetBit(registers[R_F], F_Z);
@@ -503,11 +457,11 @@ void CPU::opRRCA()
     if(LSB == 1)
     {
         registers[R_A] |= 0b10000000;
-        Helper::setBit(registers[R_F], R_C);
+        Helper::setBit(registers[R_F], F_C);
     }
     else
     {
-        Helper::resetBit(registers[R_F], R_C);
+        Helper::resetBit(registers[R_F], F_C);
     }
 
     Helper::resetBit(registers[R_F], F_Z);
@@ -578,61 +532,18 @@ void CPU::opRRA()
 /* Convert accumulator to BCD equivalent */
 void CPU::opDAA()
 {
-    // was last op subtraction?
-    bool lastIsSub{Helper::getBit(registers[R_F], F_N)};
-    bool setCarry{false};
     // max value of BCD is 1001 1001 (99)
     // we use an "error" offset to account for how 1001 is the max (as opposed to 1111)
 
-    // last op was adding
-    if(!lastIsSub)
-    {
-        // out of bounds set c flag and adjust to emulate BCD overflow
-        if(registers[R_A] > 0x99 || Helper::getBit(registers[R_F], F_C))
-        {
-            registers[R_A] += 0x60;
-            setCarry = true;
-        }
-        
-        // check if lower nibble overflowed and adjust accordingly
-        if((registers[R_A] & 0x0F) > 0x09 || Helper::getBit(registers[R_F], F_H))
-        {
-            registers[R_A] += 0x06;
-        }
-    }
-    else
-    {
-        // BCD arithmetic underflow doesn't exist so we don't need to worry about it, only whether flags were set
-        if(Helper::getBit(registers[R_F], F_C))
-        {
-            registers[R_A] -= 0x60;
-        }
-        
-        if(Helper::getBit(registers[R_F], F_H))
-        {
-            registers[R_A] += 0x06;
-        }
-    }
-    
-    if(registers[R_A] == 0)
-    {
-        Helper::setBit(registers[R_F], F_Z);
-    }
-    else
-    {
-        Helper::resetBit(registers[R_F], F_Z);
-    }
-    if(setCarry)
-    {
-        Helper::setBit(registers[R_F], F_C);
-    }
-    else
-    {
-        Helper::resetBit(registers[R_F], F_C);
-    }
-    Helper::resetBit(registers[R_F], F_H);
-    
+    /* This is the only instruction 
+        I could not get to work naturally, so I used a method from Antonio Niño Díaz, which
+        works for all cases */
+
+    uint32_t DAAIndex{(((uint32_t)registers[R_A]) << 4) | ((((uint32_t)registers[R_F] >> 4) & 7) << 1)};
+    registers[R_A] = DAA_VAL_TABLE[DAAIndex];
+    registers[R_F] = DAA_VAL_TABLE[DAAIndex + 1];
     cycleCount += 1;
+    
 }
 
 /* Complements the accumulator */
@@ -666,15 +577,31 @@ void CPU::opCCF()
     cycleCount += 1;
 }
 
+// Conflicting docs on whether this is 0 or 1 cycle
+// Halt bug not implemented
 void CPU::opHALT()
 {
-
+    isHalted = true;
+    if((memMap[0xFF0F] & memMap[0xFFFF]) != 0)
+    {
+        if(IMEflag)
+        {
+            isHalted = false;
+            // we still do interrupt
+        }
+        else
+        {
+            isHalted = false;
+            // also halt bug happens but its not implemented
+        }
+    }
+    //cycleCount += 1;
 }
 
 /* Load second registers into first register */
 void CPU::opLDrr()
 {
-    if((YYY != R_HL) & (ZZZ) != R_HL)
+    if((YYY != R_HL) && (ZZZ != R_HL))
     {
         registers[YYY] = registers[ZZZ];
 
@@ -692,7 +619,6 @@ void CPU::opLDrr()
         else
         {
             registers[YYY] = readMemory(Helper::concatChar(registers[R_H], registers[R_L]));
-            pc--;
         }
         
         cycleCount += 2;
@@ -706,11 +632,11 @@ void CPU::opADDAr()
     uint8_t cycleTime{1};
     uint8_t operand{0};
     uint8_t regVal{registers[R_A]};
+    bool carry{false};
     if(ZZZ == 6)
     {
         cycleTime = 2;
         operand = readMemory(Helper::concatChar(registers[R_H], registers[R_L]));
-        pc--;
     }
     else
     {
@@ -719,15 +645,43 @@ void CPU::opADDAr()
 
     if(YYY == 1) // add carry bit to operand
     {
-        if(Helper::getBit(registers[R_F], R_C) == 1)
+        if(Helper::getBit(registers[R_F], F_C) == 1)
         {
-            operand++;
+            carry = true;
         }
     }
 
-    registers[R_A] += operand;
+    registers[R_A] += operand + carry;
 
-    add8Bit(regVal, operand);
+    Helper::resetBit(registers[R_F], F_N);
+
+    if((regVal & 0xF) + (operand & 0xF) + (uint8_t)carry > 0x0F)
+    {
+        Helper::setBit(registers[R_F], F_H);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_H);
+    }
+
+    if((uint16_t)regVal + (uint16_t)operand + (uint8_t)carry > 0xFF)
+    {
+        Helper::setBit(registers[R_F], F_C);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_C);
+    }
+
+    if((uint8_t)(regVal + operand + (uint8_t)carry) == 0)
+    {
+        Helper::setBit(registers[R_F], F_Z);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_Z);
+
+    }
     cycleCount += cycleTime;
 }
 
@@ -741,25 +695,105 @@ void CPU::opSUBAr()
     {
         cycleTime = 2;
         operand = readMemory(Helper::concatChar(registers[R_H], registers[R_L]));
-        pc--;
     }
     else
     {
         operand = registers[ZZZ];
     }
 
-    if(YYY == 3) // add carry bit to operand
-    {
-        if(Helper::getBit(registers[R_F], R_C) == 1)
-        {
-            operand++;
-        }
-    }
-
     registers[R_A] -= operand;
 
-    sub8Bit(regVal, operand);
+    if (regVal - operand == 0)
+    {
+        Helper::setBit(registers[R_F], F_Z);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_Z);
+    }
+
+    Helper::setBit(registers[R_F], F_N);
+
+    uint8_t minuNib{(regVal & 0b1111)};
+    uint8_t subtraNib{(operand & 0b1111)};
+
+    if(subtraNib > minuNib)
+    {
+        Helper::setBit(registers[R_F], F_H);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_H);
+    }
+
+    if((operand) > regVal)
+    {
+        Helper::setBit(registers[R_F], F_C);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_C);
+    }
+    
     cycleCount += cycleTime;
+}
+
+void CPU::opSBCAr()
+{
+    uint8_t regVal{0};
+    if(ZZZ == 6)
+    {
+        regVal = readMemory(Helper::concatChar(registers[R_H], registers[R_L]));
+        cycleCount += 1;
+    }
+    else
+    {
+        regVal = registers[ZZZ];
+    }
+    int16_t operand = (int16_t)regVal & 0xFF;
+    int16_t aReg = (int16_t)registers[R_A] & 0xFF;
+    int aTemp = aReg;
+
+    aTemp -= operand;
+
+    if (Helper::getBit(registers[R_F], F_C))
+    {
+        aTemp -= 1;
+    }
+
+    Helper::setBit(registers[R_F], F_N);
+
+    if(aTemp < 0)
+    {
+        Helper::setBit(registers[R_F], F_C);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_C);
+    }
+
+    aTemp &= 0xFF;
+
+    if(aTemp == 0)
+    {
+        Helper::setBit(registers[R_F], F_Z);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_Z);
+    }
+
+    if (((aTemp ^ operand ^ aReg) & 0x10) == 0x10)
+    {
+        Helper::setBit(registers[R_F], F_H);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_H);
+    }
+
+    registers[R_A] = aTemp;
+    cycleCount += 1;
 }
             
 void CPU::opANDAr()
@@ -771,7 +805,6 @@ void CPU::opANDAr()
     {
         cycleTime = 2;
         operand = readMemory(Helper::concatChar(registers[R_H], registers[R_L]));
-        pc--;
     }
     else
     {
@@ -804,7 +837,6 @@ void CPU::opXORAr()
     {
         cycleTime = 2;
         operand = readMemory(Helper::concatChar(registers[R_H], registers[R_L]));
-        pc--;
     }
     else
     {
@@ -837,7 +869,6 @@ void CPU::opORAr()
     {
         cycleTime = 2;
         operand = readMemory(Helper::concatChar(registers[R_H], registers[R_L]));
-        pc--;
     }
     else
     {
@@ -870,14 +901,43 @@ void CPU::opCPAr()
     {
         cycleTime = 2;
         operand = readMemory(Helper::concatChar(registers[R_H], registers[R_L]));
-        pc--;
     }
     else
     {
         operand = registers[ZZZ];
     }
 
-    sub8Bit(registers[R_A], operand);
+    if ((registers[R_A] - operand) == 0)
+    {
+        Helper::setBit(registers[R_F], F_Z);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_Z);
+    }
+
+    Helper::setBit(registers[R_F], F_N);
+
+    uint8_t minuNib{(registers[R_A] & 0b1111)};
+    uint8_t subtraNib{(operand & 0b1111)};
+
+    if(subtraNib > minuNib)
+    {
+        Helper::setBit(registers[R_F], F_H);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_H);
+    }
+
+    if(operand > registers[R_A])
+    {
+        Helper::setBit(registers[R_F], F_C);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_C);
+    }
 
     cycleCount += cycleTime;
 }
@@ -898,6 +958,7 @@ void CPU::opRETcc()
 void CPU::opLDHnA()
 {
     uint16_t addr{Helper::concatChar(0xFF, readMemory(pc))};
+    pc++;
 
     writeMemory(addr, registers[R_A]);
     cycleCount += 3;
@@ -906,17 +967,26 @@ void CPU::opLDHnA()
 void CPU::opADDSPd()
 {
     int8_t operand{0xFF & readMemory(pc)};
+    pc++;
     uint8_t originalSP{sp & 0xFF};
 
     sp += operand;
 
-    if(operand < 0)
+    if((sp & 0xFF) < (originalSP & 0xFF))
     {
-        sub8Bit(originalSP, operand);
+        Helper::setBit(registers[R_F], F_C);
     }
     else
     {
-        add8Bit(originalSP, operand);
+        Helper::resetBit(registers[R_F], F_C);
+    }
+    if((sp & 0xF) < (originalSP & 0xF))
+    {
+        Helper::setBit(registers[R_F], F_H);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_H);
     }
 
     Helper::resetBit(registers[R_F], F_Z);
@@ -926,30 +996,41 @@ void CPU::opADDSPd()
 
 void CPU::opLDHAn()
 {
-    uint16_t addr{Helper::concatChar(0xFF, readMemory(pc))};
+    uint16_t addr{0xFF00 + readMemory(pc)};
+    pc++;
     registers[R_A] = readMemory(addr);
-    pc--;
 
     cycleCount += 3;
 }
 
 void CPU::opLDHLSPId()
 {
-    int8_t operand{0xFF & readMemory(pc)};
-    uint8_t originalSP{sp & 0xFF};
+    int8_t operand{readMemory(pc)};
+    pc++;
     uint16_t sum{sp + operand};
     
     registers[R_H] = Helper::hiBits(sum);
     registers[R_L] = Helper::loBits(sum);
 
-    if(operand < 0)
+    if((sum & 0xFF) < (sp & 0xFF))
     {
-        sub8Bit(originalSP, operand);
+        Helper::setBit(registers[R_F], F_C);
     }
     else
     {
-        add8Bit(originalSP, operand);
+        Helper::resetBit(registers[R_F], F_C);
     }
+    if((sum & 0xF) < (sp & 0xF))
+    {
+        Helper::setBit(registers[R_F], F_H);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_H);
+    }
+
+    Helper::resetBit(registers[R_F], F_Z);
+    Helper::resetBit(registers[R_F], F_N);
 
     Helper::resetBit(registers[R_F], F_Z);
     Helper::resetBit(registers[R_F], F_N);
@@ -981,11 +1062,14 @@ void CPU::opPOPrp2()
     }
 
     registers[loReg] = readMemory(sp);
-    pc--;
     sp++;
     registers[hiReg] = readMemory(sp);
-    pc--;
     sp++;
+
+    if(P == 3)
+    {
+        registers[loReg] &= 0xF0;
+    }
 
     cycleCount += 3;
 }
@@ -997,11 +1081,9 @@ void CPU::opRET()
 
     lower = readMemory(sp);
     sp++;
-    pc--;
 
     upper = readMemory(sp);
     sp++;
-    pc--;
 
     pc = Helper::concatChar(upper, lower);
 
@@ -1037,6 +1119,7 @@ void CPU::opJPccnn()
     }
     else
     {
+        pc += 2;
         cycleCount += 3;
     }
 }
@@ -1050,7 +1133,9 @@ void CPU::opLDHCA()
 void CPU::opLDnnA()
 {
     uint8_t lower{readMemory(pc)};
+    pc++;
     uint8_t upper{readMemory(pc)};
+    pc++;
 
     writeMemory(Helper::concatChar(upper, lower), registers[R_A]);
     cycleCount += 4;
@@ -1061,7 +1146,6 @@ void CPU::opLDHAC()
     uint16_t addr{Helper::concatChar(0xFF, registers[R_C])};
 
     registers[R_A] = readMemory(addr);
-    pc--;
 
     cycleCount += 2;
 }
@@ -1069,11 +1153,12 @@ void CPU::opLDHAC()
 void CPU::opLDAnn()
 {
     uint8_t lower{readMemory(pc)};
+    pc++;
     uint8_t upper{readMemory(pc)};
+    pc++;
     uint16_t addr{Helper::concatChar(upper, lower)};
 
     registers[R_A] = readMemory(addr);
-    pc--;
 
     cycleCount += 4;
 }
@@ -1081,7 +1166,9 @@ void CPU::opLDAnn()
 void CPU::opJPnn()
 {
     uint8_t lower{readMemory(pc)};
+    pc++;
     uint8_t upper{readMemory(pc)};
+    pc++;
 
     pc = Helper::concatChar(upper, lower);
     
@@ -1097,6 +1184,7 @@ void CPU::opDI()
 void CPU::opEI()
 {
     prepareIME = 1;
+    nextInstrExecuted = 0;
     cycleCount += 1;
 }
 
@@ -1108,6 +1196,7 @@ void CPU::opCALLccnn()
     }
     else
     {
+        pc += 2;
         cycleCount += 3;
     }
 }
@@ -1152,7 +1241,9 @@ void CPU::opCALLnn()
 {
 
     uint8_t lowJP{readMemory(pc)};
+    pc++;
     uint8_t highJP{readMemory(pc)};
+    pc++;
 
     // move sp keeping little endianness in mind
     sp--;
@@ -1174,45 +1265,147 @@ void CPU::opCALLnn()
 void CPU::opADDAn()
 {
     uint8_t operand{readMemory(pc)};
+    pc++;
     uint8_t regVal{registers[R_A]};
+    bool carry{false};
 
     if(YYY == 1) // add carry bit to operand
     {
-        if(Helper::getBit(registers[R_F], R_C) == 1)
+        if(Helper::getBit(registers[R_F], F_C) == 1)
         {
-            operand++;
+            carry = true;
         }
     }
 
-    registers[R_A] += operand;
+    registers[R_A] += operand + carry;
 
-    add8Bit(regVal, operand);
+    if((regVal & 0xF) + (operand & 0xF) + (uint8_t)carry > 0x0F)
+    {
+        Helper::setBit(registers[R_F], F_H);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_H);
+    }
+
+    if((uint16_t)regVal + (uint16_t)operand + (uint8_t)carry > 0xFF)
+    {
+        Helper::setBit(registers[R_F], F_C);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_C);
+    }
+
+    if((uint8_t)(regVal + operand + (uint8_t)carry) == 0)
+    {
+        Helper::setBit(registers[R_F], F_Z);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_Z);
+
+    }
+    Helper::resetBit(registers[R_F], F_N);
     cycleCount += 2;
 }
 
 void CPU::opSUBAn()
 {
     uint8_t operand{readMemory(pc)};
+    pc++;
     uint8_t regVal{registers[R_A]};
-
-
-    if(YYY == 3) // add carry bit to operand
-    {
-        if(Helper::getBit(registers[R_F], R_C) == 1)
-        {
-            operand++;
-        }
-    }
 
     registers[R_A] -= operand;
 
-    sub8Bit(regVal, operand);
+    if ((regVal - operand) == 0)
+    {
+        Helper::setBit(registers[R_F], F_Z);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_Z);
+    }
+
+    Helper::setBit(registers[R_F], F_N);
+
+    uint8_t minuNib{(regVal & 0b1111)};
+    uint8_t subtraNib{(operand & 0b1111)};
+
+    if(subtraNib > minuNib)
+    {
+        Helper::setBit(registers[R_F], F_H);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_H);
+    }
+
+    if(operand > regVal)
+    {
+        Helper::setBit(registers[R_F], F_C);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_C);
+    }
+    cycleCount += 2;
+    
+}
+
+void CPU::opSBCAn()
+{
+    int16_t operand = (int16_t)readMemory(pc) & 0xFF;
+    pc++;
+    int16_t aReg = (int16_t)registers[R_A] & 0xFF;
+    int aTemp = aReg;
+
+    aTemp -= operand;
+
+    if (Helper::getBit(registers[R_F], F_C))
+    {
+        aTemp -= 1;
+    }
+
+    Helper::setBit(registers[R_F], F_N);
+
+    if(aTemp < 0)
+    {
+        Helper::setBit(registers[R_F], F_C);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_C);
+    }
+
+    aTemp &= 0xFF;
+
+    if(aTemp == 0)
+    {
+        Helper::setBit(registers[R_F], F_Z);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_Z);
+    }
+
+    if (((aTemp ^ operand ^ aReg) & 0x10) == 0x10)
+    {
+        Helper::setBit(registers[R_F], F_H);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_H);
+    }
+
+    registers[R_A] = aTemp;
     cycleCount += 2;
 }
             
 void CPU::opANDAn()
 {
     uint8_t operand{readMemory(pc)};
+    pc++;
 
     registers[R_A] &= operand;
     if(registers[R_A] == 0)
@@ -1235,6 +1428,7 @@ void CPU::opANDAn()
 void CPU::opXORAn()
 {
     uint8_t operand{readMemory(pc)};
+    pc++;
 
     registers[R_A] ^= operand;
 
@@ -1257,6 +1451,7 @@ void CPU::opXORAn()
 void CPU::opORAn()
 {
     uint8_t operand{readMemory(pc)};
+    pc++;
 
     registers[R_A] |= operand;
 
@@ -1279,8 +1474,39 @@ void CPU::opORAn()
 void CPU::opCPAn()
 {
     uint8_t operand{readMemory(pc)};
+    pc++;
 
-    sub8Bit(registers[R_A], operand);
+    if((registers[R_A] - operand) == 0)
+    {
+        Helper::setBit(registers[R_F], F_Z);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_Z);
+    }
+
+    Helper::setBit(registers[R_F], F_N);
+
+    uint8_t minuNib{(registers[R_A] & 0b1111)};
+    uint8_t subtraNib{(operand & 0b1111)};
+
+    if(subtraNib > minuNib)
+    {
+        Helper::setBit(registers[R_F], F_H);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_H);
+    }
+
+    if(operand > registers[R_A])
+    {
+        Helper::setBit(registers[R_F], F_C);
+    }
+    else
+    {
+        Helper::resetBit(registers[R_F], F_C);
+    }
 
     cycleCount += 2;
 }
@@ -1319,7 +1545,6 @@ void CPU::opROT()
         cycleTime += 2;
 
         data = readMemory(Helper::concatChar(registers[R_H], registers[R_L]));
-        pc--;
     }
     else
     {
@@ -1348,19 +1573,24 @@ void CPU::opROT()
             break;
         case 6:
             returnValue = opSWAPr(data);
+            Helper::resetBit(registers[R_F], F_C);
             break;
         case 7:
             returnValue = opSRLr(data);
             break;
     }
 
-    if(regIndex = R_HL)
+    if(regIndex == R_HL)
     {
         writeMemory(Helper::concatChar(registers[R_H], registers[R_L]), returnValue);
     }
     else
     {
-        registers[regIndex] = returnValue;
+        if(regIndex != R_F)
+        {
+            registers[regIndex] = returnValue;
+        }
+        
     }
 
     Helper::resetBit(registers[R_F], F_N);
@@ -1395,6 +1625,7 @@ uint8_t CPU::opRLCr(uint8_t data)
     }
 
     return temp;
+
 }
 
 uint8_t CPU::opRRCr(uint8_t data)
@@ -1457,7 +1688,6 @@ uint8_t CPU::opRRr(uint8_t data)
 uint8_t CPU::opSLAr(uint8_t data)
 {
     uint8_t MSB{Helper::getBit(data, 7)};
-    uint8_t cFlag{Helper::getBit(registers[R_F], F_C)};
 
     data = (data << 1);
 
@@ -1477,7 +1707,6 @@ uint8_t CPU::opSRAr(uint8_t data)
 {
     uint8_t LSB{Helper::getBit(data, 0)};
     uint8_t MSB{Helper::getBit(data, 7)};
-    uint8_t cFlag{Helper::getBit(registers[R_F], F_C)};
 
     data = (data >> 1) | (MSB << 7);
 
@@ -1502,9 +1731,6 @@ uint8_t CPU::opSWAPr(uint8_t data)
     newLower >>= 4;
 
     return (newUpper | newLower); 
-    
-    Helper::resetBit(registers[R_F], F_C);
-
     
 }
 
@@ -1536,7 +1762,6 @@ void CPU::opBIT()
     if(regIndex == 6)
     {
         data = readMemory(Helper::concatChar(registers[R_H], registers[R_L]));
-        pc--;
         cycleTime += 1;
     }
     else
@@ -1546,11 +1771,11 @@ void CPU::opBIT()
 
     if(Helper::getBit(data, bitPosition))
     {
-        Helper::resetBit(registers[R_F], F_N);
+        Helper::resetBit(registers[R_F], F_Z);
     }
     else
     {
-        Helper::setBit(registers[R_F], F_N);
+        Helper::setBit(registers[R_F], F_Z);
     }
 
     Helper::resetBit(registers[R_F], F_N);
@@ -1569,15 +1794,15 @@ void CPU::opRES()
     if(regIndex == 6)
     {
         data = readMemory(Helper::concatChar(registers[R_H], registers[R_L]));
-        pc--;
+        Helper::resetBit(data, bitPosition);
+        writeMemory(Helper::concatChar(registers[R_H], registers[R_L]), data);
         cycleTime += 2;
     }
     else
     {
-        data = registers[ZZZ];
+        Helper::resetBit(registers[ZZZ], bitPosition);
     }
 
-    data &= ~(0b1 << bitPosition); 
 
     cycleCount = cycleTime;
 }
@@ -1592,15 +1817,16 @@ void CPU::opSET()
     if(regIndex == 6)
     {
         data = readMemory(Helper::concatChar(registers[R_H], registers[R_L]));
-        pc--;
+        Helper::setBit(data, bitPosition);
+        writeMemory(Helper::concatChar(registers[R_H], registers[R_L]), data);
         cycleTime += 2;
     }
     else
     {
-        data = registers[ZZZ];
+        Helper::setBit(registers[ZZZ], bitPosition);
     }
 
-    data |= (0b1 << bitPosition); 
+    
 
     cycleCount += cycleTime;
 }

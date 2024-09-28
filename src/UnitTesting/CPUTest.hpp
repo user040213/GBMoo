@@ -1,5 +1,5 @@
-#ifndef CPU_H
-#define CPU_H
+#ifndef CPUTEST_H
+#define CPUTEST_H
 
 #include <cstdint>
 #include <vector>
@@ -10,12 +10,8 @@
 #include <chrono>
 #include <filesystem>
 #include <cstring>
-#include <SDL_keyboard.h>
 
-#include "Helper.hpp"
-#include "PPU.hpp"
-#include "Timers.hpp"
-#include "Joypad.hpp"
+#include "../Helper.hpp"
 
 /* DEBUG FLAG */
 constexpr bool DEBUG_MODE = false;
@@ -80,7 +76,7 @@ constexpr uint8_t MBC2 = 2;
 constexpr uint8_t MBC3 = 3;
 constexpr uint8_t MBC5 = 5;
 
-class CPU
+class CPUTest
 {
 
     /* VARIABLES */
@@ -88,28 +84,21 @@ class CPU
 
         // CPU cycle tracker (m-cycles)
         uint16_t cycleCount;
-        int32_t totalCycleCount;
-
-    
-    private:
+        uint32_t totalCycleCount;
 
         // Interrupt flag
         bool IMEflag;
         bool prepareIME;
-        bool nextInstrExecuted; // used exclusively alongside prepareIME
-        bool isHalted;
-        uint8_t lastIReqs;
+
+        void JsonState(const std::string fileName);
+    
+    private:
+
 
         // All CPU registers
         uint8_t registers[8];
         uint16_t sp;
         uint16_t pc;
-
-        // For graphics related stuff
-        PPU mPPU;
-        Joypad mJoypad;
-
-        Timers mTimerControl;
 
         // Memory map
         std::vector<uint8_t> memMap;
@@ -128,9 +117,6 @@ class CPU
         uint16_t maxROMBanks;
         uint8_t maxRAMBanks;
 
-        bool enableRAM;
-        bool doingROMBanking;
-
         // Opcode Decoding (In Octal)
         uint8_t opcode;
 
@@ -145,9 +131,7 @@ class CPU
     /* FUNCTIONS */
     public:
         // Constructor
-        CPU();
-
-        ~CPU();
+        CPUTest();
 
         // ROM loader
         void loadROM(const std::string fileName);
@@ -160,13 +144,10 @@ class CPU
 
         uint8_t* getPPUArray();
 
-        void handleJoypadInput(SDL_Scancode inputIndex, bool pressed);
-
 
     private:
         void handleInterrupt();
         void DMATransfer(uint8_t data);
-        void debugLog(std::ostream& logFile);
 
         // Timer operations, we want these to bypass our R/W functions
         void incDIV();
@@ -180,8 +161,6 @@ class CPU
         void getROMSize(const uint8_t type);
         void getRAMSize(const uint8_t type);
         void generateBanks();
-
-        void doBanking(const uint16_t addr, const uint8_t data);
 
         // LCD Functions
 
@@ -201,6 +180,12 @@ class CPU
         /* OPCODES (format opXXYYYZZZ) */
         // Opcode helpers
         bool passedCondition(uint8_t condition);
+        void add16Bit(uint16_t operand1, uint16_t operand2); // only sets flags
+        void add8Bit(uint8_t operand1, uint8_t operand2, bool carry); // only sets flags
+        void sub8Bit(uint8_t minuend, uint8_t subtrahend, bool carry); // only sets flags
+        // used to preserve carry flags
+        void inc8Bit(uint8_t data);
+        void dec8Bit(uint8_t data);
 
         // XX = 0 (00)
             // ZZZ = 0
@@ -270,7 +255,6 @@ class CPU
             void opADDAr();
             // YYY = 2-3
             void opSUBAr();
-            void opSBCAr();
             // YYY = 4
             void opANDAr();
             // YYY = 5
@@ -344,7 +328,6 @@ class CPU
                 void opADDAn();
                 // YYY = 2-3
                 void opSUBAn();
-                void opSBCAn();
                 // YYY = 4
                 void opANDAn();
                 // YYY = 5
