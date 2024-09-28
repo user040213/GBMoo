@@ -18,7 +18,7 @@
 <p>Or compile manually (take a look at the Makefile) </p>
 
 <p>You must find your own ROMs, I cannot provide any </p>
-<p>If you are interested in improving this emulator feel free to submit some PRs :D<\p>
+<p>If you are interested in improving this emulator feel free to submit some PRs :D </p>
 
 ## Some Screenshots
 ![IBM Splash Screen](resources/images/GBMooTetris.png)
